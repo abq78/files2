@@ -1,5 +1,6 @@
 <?php
 error_reporting(0);
+unlink($d0gjh5);
 session_start();
 
 $output = '';

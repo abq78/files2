@@ -1,0 +1,288 @@
+<?php
+error_reporting(0);
+session_start();
+
+$output = '';
+
+// Lógica de Desconexão (limpa a sessão)
+if (isset($_GET['action']) && $_GET['action'] == 'disconnect') {
+    session_destroy();
+    header('Location: ' . $_SERVER['PHP_SELF']);
+    exit;
+}
+
+// Verifica se há informações de conexão na sessão
+if (!isset($_SESSION['db_host'])) {
+    // Se não houver, exibe o formulário de login de conexão
+    $host = isset($_POST['db_host']) ? $_POST['db_host'] : '';
+    $user = isset($_POST['db_user']) ? $_POST['db_user'] : '';
+    $pass = isset($_POST['db_pass']) ? $_POST['db_pass'] : '';
+    $db = isset($_POST['db_name']) ? $_POST['db_name'] : '';
+    
+    // Processa o formulário de login
+    if (isset($_POST['action']) && $_POST['action'] === 'connect') {
+        try {
+            // Tenta a conexão inicial para validar as credenciais
+            $mysqli = new mysqli($host, $user, $pass);
+            if ($mysqli->connect_error) {
+                throw new Exception("Falha na conexão: " . $mysqli->connect_error);
+            }
+            $mysqli->close();
+
+            // Salva as credenciais na sessão
+            $_SESSION['db_host'] = $host;
+            $_SESSION['db_user'] = $user;
+            $_SESSION['db_pass'] = $pass;
+            $_SESSION['db_name'] = $db;
+
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit;
+
+        } catch (Exception $e) {
+            $output = "Erro de conexão: " . $e->getMessage();
+        }
+    }
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Login - Console MySQL</title>
+    <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; background-color: #f4f4f4; }
+        .login-container { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center; }
+        .login-container h2 { margin-bottom: 20px; }
+        .login-container input[type="text"], .login-container input[type="password"] { width: 90%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; }
+        .login-container button { width: 100%; padding: 10px; border: none; background-color: #007bff; color: white; border-radius: 4px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <h2>Conexão MySQL</h2>
+        <form method="POST">
+            <input type="text" name="db_host" placeholder="Host" value="<?php echo htmlspecialchars($host); ?>" required>
+            <input type="text" name="db_user" placeholder="Usuário" value="<?php echo htmlspecialchars($user); ?>" required>
+            <input type="password" name="db_pass" placeholder="Senha" value="<?php echo htmlspecialchars($pass); ?>">
+            <input type="text" name="db_name" placeholder="Banco de Dados (Opcional)" value="<?php echo htmlspecialchars($db); ?>">
+            <button type="submit" name="action" value="connect">Conectar</button>
+        </form>
+        <?php if (!empty($output)) { echo "<p style='color:red; margin-top: 15px;'>$output</p>"; } ?>
+    </div>
+</body>
+</html>
+<?php
+    exit; // Termina o script aqui se não estiver logado
+}
+
+// Lógica de Execução da Query ou Exportação para CSV
+$host = $_SESSION['db_host'];
+$user = $_SESSION['db_user'];
+$pass = $_SESSION['db_pass'];
+$db = $_SESSION['db_name'];
+$query = isset($_POST['query']) ? $_POST['query'] : '';
+
+// -----------------------------------------------------------
+// NOVO: Lógica de Exportação para CSV
+// -----------------------------------------------------------
+if (isset($_POST['action']) && $_POST['action'] === 'export_csv') {
+    if (!empty($query)) {
+        try {
+            // Tenta a conexão com o banco de dados atual
+            if (!empty($db)) {
+                $mysqli = new mysqli($host, $user, $pass, $db);
+            } else {
+                $mysqli = new mysqli($host, $user, $pass);
+            }
+            
+            if ($mysqli->connect_error) {
+                throw new Exception("Falha na conexão: " . $mysqli->connect_error);
+            }
+
+            // Executa a query
+            $res = $mysqli->query($query);
+            
+            if ($res) {
+                // Configura os cabeçalhos para download do arquivo CSV
+                header('Content-Type: text/csv; charset=UTF-8');
+                header('Content-Disposition: attachment; filename="export_'. date('Ymd_His') .'.csv"');
+                
+                // Cria um ponteiro para o output do PHP (stdout)
+                $output_file = fopen('php://output', 'w');
+                
+                // Configura o delimitador para ";"
+                $delimiter = ';';
+
+                // Obtém os nomes das colunas e escreve a linha de cabeçalho
+                $columns = array();
+                $fields_info = $res->fetch_fields();
+                foreach ($fields_info as $field) {
+                    $columns[] = $field->name;
+                }
+                fputcsv($output_file, $columns, $delimiter);
+                
+                // Escreve os dados da query no arquivo CSV
+                while ($row = $res->fetch_assoc()) {
+                    // Prepara os dados da linha para o CSV
+                    $rowData = array();
+                    foreach ($columns as $column) {
+                        $rowData[] = $row[$column];
+                    }
+                    fputcsv($output_file, $rowData, $delimiter);
+                }
+
+                $res->free();
+                $mysqli->close();
+                fclose($output_file);
+                exit; // Termina o script após o download
+            } else {
+                // Se a query falhou, redireciona de volta com a mensagem de erro
+                $_SESSION['last_output'] = "Erro na query: " . $mysqli->error;
+                header('Location: ' . $_SERVER['PHP_SELF']);
+                exit;
+            }
+
+        } catch (Exception $e) {
+            // Se a conexão falhou, redireciona com a mensagem de erro
+            $_SESSION['last_output'] = "Erro: " . $e->getMessage();
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit;
+        }
+    } else {
+        $_SESSION['last_output'] = "Por favor, digite uma query para exportar.";
+        header('Location: ' . $_SERVER['PHP_SELF']);
+        exit;
+    }
+}
+
+// -----------------------------------------------------------
+// Lógica de Execução da Query (já existente)
+// -----------------------------------------------------------
+if (isset($_POST['action']) && $_POST['action'] === 'execute') {
+    if (!empty($query)) {
+        // Verifica se a query é para mudar de banco de dados
+        $matches = array();
+        if (preg_match('/^\s*USE\s+(`?)(.*?)\1\s*;\s*$/i', $query, $matches)) {
+            $new_db = $matches[2];
+            $_SESSION['db_name'] = $new_db;
+            $db = $new_db;
+            $output = "Banco de dados mudado para: **`" . htmlspecialchars($new_db) . "`**";
+        } else {
+            try {
+                // Tenta a conexão com o banco de dados atual
+                if (!empty($db)) {
+                    $mysqli = new mysqli($host, $user, $pass, $db);
+                } else {
+                    $mysqli = new mysqli($host, $user, $pass);
+                }
+                
+                if ($mysqli->connect_error) {
+                    throw new Exception("Falha na conexão: " . $mysqli->connect_error);
+                }
+
+                if ($mysqli->multi_query($query)) {
+                    $results = array();
+                    $affected_rows = 0;
+                    do {
+                        if ($res = $mysqli->store_result()) {
+                            while ($row = $res->fetch_assoc()) {
+                                $results[] = $row;
+                            }
+                            $res->free();
+                        } else if ($mysqli->error) {
+                            $output = "Erro: " . $mysqli->error;
+                            break;
+                        }
+                        $affected_rows += $mysqli->affected_rows;
+                    } while ($mysqli->more_results() && $mysqli->next_result());
+
+                    if (empty($output)) {
+                        if (count($results) > 0) {
+                            $output .= "<table border='1' style='width: 100%; border-collapse: collapse;'>";
+                            $output .= "<tr>";
+                            foreach (array_keys($results[0]) as $column) {
+                                $output .= "<th>" . htmlspecialchars($column) . "</th>";
+                            }
+                            $output .= "</tr>";
+                            foreach ($results as $row) {
+                                $output .= "<tr>";
+                                foreach ($row as $value) {
+                                    $output .= "<td>" . htmlspecialchars($value) . "</td>";
+                                }
+                                $output .= "</tr>";
+                            }
+                            $output .= "</table>";
+                        } else {
+                            $output = "Query executada com sucesso. Linhas afetadas: " . $affected_rows;
+                        }
+                    }
+                } else {
+                    $output = "Erro na query: " . $mysqli->error;
+                }
+
+                $mysqli->close();
+            } catch (Exception $e) {
+                $output = "Erro: " . $e->getMessage();
+            }
+        }
+    } else {
+        $output = "Por favor, digite uma query.";
+    }
+}
+
+// Verifica se há alguma mensagem de erro de exportação para exibir
+if (isset($_SESSION['last_output'])) {
+    $output = $_SESSION['last_output'];
+    unset($_SESSION['last_output']);
+}
+?>
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Console MySQL</title>
+    <style>
+        body { font-family: monospace; background-color: #333; color: #f0f0f0; margin: 0; padding: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #555; padding-bottom: 10px; margin-bottom: 20px; }
+        .header h1 { margin: 0; font-size: 1.5rem; }
+        .header a { color: #f0f0f0; text-decoration: none; padding: 5px 10px; border: 1px solid #555; border-radius: 4px; }
+        .header a:hover { background-color: #555; }
+        .console-area { background-color: #222; border: 1px solid #444; border-radius: 8px; padding: 15px; }
+        .console-area textarea { width: 100%; height: 150px; background-color: #1a1a1a; color: #f0f0f0; border: 1px solid #444; padding: 10px; box-sizing: border-box; font-family: monospace; font-size: 14px; resize: vertical; }
+        .console-area .buttons { margin-top: 10px; display: flex; gap: 10px; }
+        .console-area button { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .console-area button[name="action"][value="execute"] { background-color: #007bff; color: white; }
+        .console-area button[name="action"][value="export_csv"] { background-color: #28a745; color: white; }
+        .output-area { margin-top: 20px; background-color: #1a1a1a; border: 1px solid #444; border-radius: 8px; padding: 15px; min-height: 100px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word; font-size: 14px; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #444; padding: 8px; text-align: left; }
+        th { background-color: #333; }
+        .credentials-info { font-size: 0.9em; margin-top: -10px; margin-bottom: 20px; color: #aaa; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Console MySQL</h1>
+        <a href="?action=disconnect">Desconectar</a>
+    </div>
+    
+    <div class="credentials-info">
+        Conectado a: **<?php echo htmlspecialchars($host); ?>** (Usuário: **<?php echo htmlspecialchars($user); ?>**) | Banco de dados atual: **<?php echo htmlspecialchars($db); ?>**
+    </div>
+
+    <div class="console-area">
+        <form method="POST">
+            <label for="query">Digite sua query:</label>
+            <textarea id="query" name="query" placeholder="Ex: USE database_name;"><?php echo htmlspecialchars($query); ?></textarea>
+            <div class="buttons">
+                <button type="submit" name="action" value="execute">Executar</button>
+                <button type="submit" name="action" value="export_csv">Exportar para CSV</button>
+            </div>
+        </form>
+    </div>
+    
+    <div class="output-area">
+        <h3>Resultado:</h3>
+        <pre><?php echo $output; ?></pre>
+    </div>
+</body>
+</html>

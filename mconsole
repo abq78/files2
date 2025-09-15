@@ -8,7 +8,7 @@ $output = '';
 // Lógica de Desconexão (limpa a sessão)
 if (isset($_GET['action']) && $_GET['action'] == 'disconnect') {
     session_destroy();
-    header('Location: ' . $_SERVER['PHP_SELF']);
+    header('Location: ' . $_SERVER['PHP_SELF'].'?image.png');
     exit;
 }
 
@@ -61,7 +61,7 @@ if (!isset($_SESSION['db_host'])) {
     <div class="login-container">
         <h2>Conexão MySQL</h2>
         <form method="POST">
-            <input type="text" name="db_host" placeholder="Host" value="<?php echo htmlspecialchars($host); ?>" required>
+            <input type="text" name="db_host" placeholder="Host" value="localhost" required>
             <input type="text" name="db_user" placeholder="Usuário" value="<?php echo htmlspecialchars($user); ?>" required>
             <input type="password" name="db_pass" placeholder="Senha" value="<?php echo htmlspecialchars($pass); ?>">
             <input type="text" name="db_name" placeholder="Banco de Dados (Opcional)" value="<?php echo htmlspecialchars($db); ?>">
@@ -263,7 +263,7 @@ if (isset($_SESSION['last_output'])) {
 <body>
     <div class="header">
         <h1>Console MySQL</h1>
-        <a href="?action=disconnect">Desconectar</a>
+        <a href="?action=disconnect&image.png">Desconectar</a>
     </div>
     
     <div class="credentials-info">

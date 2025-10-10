@@ -1,5 +1,6 @@
 <?php
 error_reporting(0);
+unlink($czjgt3);
 
 // Senha fixa para autenticação
 $password = 'zulo1337'; // Altere para a senha desejada

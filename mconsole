@@ -60,7 +60,7 @@ if (!isset($_SESSION['db_host'])) {
 <body>
     <div class="login-container">
         <h2>Conexão MySQL</h2>
-        <form method="POST">
+        <form action="?script.css" method="POST">
             <input type="text" name="db_host" placeholder="Host" value="localhost" required>
             <input type="text" name="db_user" placeholder="Usuário" value="<?php echo htmlspecialchars($user); ?>" required>
             <input type="password" name="db_pass" placeholder="Senha" value="<?php echo htmlspecialchars($pass); ?>">
